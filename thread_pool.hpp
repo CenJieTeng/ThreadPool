@@ -199,6 +199,7 @@ public:
   ~thread_pool();
 
   void stop();
+  void stop_wait();
   void add_task(const task_t&);  //thread safe;
 
 private:
@@ -222,6 +223,7 @@ private:
   std::mutex m_mutex;
   std::condition_variable m_cond;
   bool m_is_started;
+  bool m_stop_wait;
 };
 
 }

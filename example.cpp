@@ -108,8 +108,11 @@ int main()
 
   sola::thread_pool thread_pool;
 
-  for(int i = 0; i < 5 ; i++)
+  for(int i = 0; i < 3 ; i++)
     thread_pool.add_task(testFunc);
+
+  thread_pool.stop_wait(); //wait all tasks to complate
+  //thread_pool.add_task(testFunc); //can't add new task to thread_pool
 
   getchar();
   return 0;

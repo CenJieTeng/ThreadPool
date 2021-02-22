@@ -83,7 +83,8 @@ thread_pool::thread_pool(int init_size)
   :m_init_threads_size(init_size),
   m_mutex(),
   m_cond(),
-  m_is_started(false)
+  m_is_started(false),
+  m_stop_wait(false)
 {
   start();
 }
@@ -98,6 +99,7 @@ thread_pool::~thread_pool()
 
 void thread_pool::start()
 {
+  __SOLA_LOG(info, "thread_pool::start() start.")
   assert(m_threads.empty());
   m_is_started = true;
   m_threads.reserve(m_init_threads_size);
@@ -114,6 +116,7 @@ void thread_pool::stop()
   {
     std::unique_lock<std::mutex> lock(m_mutex);
     m_is_started = false;
+    m_stop_wait = false;
     m_cond.notify_all();
     __SOLA_LOG(debug, "thread_pool::stop() notifyAll().");
   }
@@ -126,16 +129,37 @@ void thread_pool::stop()
   m_threads.clear();
 }
 
+void thread_pool::stop_wait()
+{
+  __SOLA_LOG(debug, "thread_pool::stop_wait() stop.");
+  {
+    std::unique_lock<std::mutex> lock(m_mutex);
+    m_is_started = false;
+    m_stop_wait = true;
+    m_cond.notify_all();
+  }
+
+  for (threads_t::iterator it = m_threads.begin(); it != m_threads.end() ; ++it)
+  {
+    (*it)->join();
+    delete *it;
+  }
+  m_threads.clear();
+}
 
 void thread_pool::thread_loop()
 {
   __SOLA_LOG(debug, "thread_pool::threadLoop() tid : " + get_tid() + " start.");
-  while(m_is_started)
+  while(m_is_started || m_stop_wait)
   {
     task_t task = take();
     if(task)
     {
       task();
+    }
+    else if (m_stop_wait)
+    {
+      break;
     }
   }
   __SOLA_LOG(debug, "thread_pool::threadLoop() tid : " + get_tid() + " exit.");
@@ -144,6 +168,8 @@ void thread_pool::thread_loop()
 void thread_pool::add_task(const task_t& task)
 {
   std::unique_lock<std::mutex> lock(m_mutex);
+  if (m_is_started == false)
+    return;
   /*while(m_tasks.isFull())
     {//when m_tasks have maxsize
       cond2.notify_one();
@@ -167,7 +193,7 @@ thread_pool::task_t thread_pool::take()
 
   task_t task;
   tasks_t::size_type size = m_tasks.size();
-  if(!m_tasks.empty() && m_is_started)
+  if(!m_tasks.empty() && (m_is_started || m_stop_wait))
   {
     task = m_tasks.front();
     m_tasks.pop_front();
